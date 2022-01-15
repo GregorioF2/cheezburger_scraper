@@ -36,7 +36,6 @@ func DownloadImages(ctx context.Context, urls []string, path string) error {
 	err := chromedp.Run(ctx,
 		chromedp.ActionFunc(func(ctx context.Context) error {
 			for i, url := range urls {
-				fmt.Println("navigate to : ", url)
 				requestInProgressWG.Add(1)
 				err := chromedp.Navigate(url).Do(ctx)
 				if err != nil {
@@ -47,7 +46,7 @@ func DownloadImages(ctx context.Context, urls []string, path string) error {
 				if err != nil {
 					return err
 				}
-				if err := ioutil.WriteFile(fmt.Sprintf("%s/%d.png", path, i), buf, 0644); err != nil {
+				if err := ioutil.WriteFile(fmt.Sprintf("%s/%d.jpg", path, i+1), buf, 0644); err != nil {
 					return err
 				}
 			}
