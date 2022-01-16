@@ -15,6 +15,7 @@ import (
 	"github.com/chromedp/chromedp"
 
 	config "propper/configs"
+	logger "propper/types/logger"
 )
 
 func DownloadImages(ctx context.Context, urls []string, path string) error {
@@ -33,6 +34,7 @@ func DownloadImages(ctx context.Context, urls []string, path string) error {
 	})
 	var waitForActions sync.WaitGroup
 	waitForActions.Add(1)
+	logger.Log("Start download the images")
 	err := chromedp.Run(ctx,
 		chromedp.ActionFunc(func(ctx context.Context) error {
 			for i, url := range urls {
@@ -56,6 +58,7 @@ func DownloadImages(ctx context.Context, urls []string, path string) error {
 	)
 
 	waitForActions.Wait()
+	logger.Log("Finished downloading the images")
 	return err
 }
 
@@ -73,23 +76,26 @@ func GetImagesURLS(ctx context.Context, ammount int) ([]string, error) {
 
 	var waitForActions sync.WaitGroup
 	waitForActions.Add(1)
+	logger.Log(fmt.Sprintf("Ammount to meet: %d", ammount))
+	logger.Log("Start getting the urls")
 	if err := chromedp.Run(ctx,
 		chromedp.Navigate(config.SITE_URL),
-
 		chromedp.ActionFunc(func(ctx context.Context) error {
+			logger.Log("Start action to select nodes")
 			for len(nodes) <= ammount {
 				var localNodes []*cdp.Node
-				err := chromedp.Nodes(".mu-post.mu-thumbnail > img", &localNodes, chromedp.BySearch).Do(ctx)
+				err := chromedp.Nodes(config.CARD_IMG_SELECTOR, &localNodes, chromedp.BySearch).Do(ctx)
 				if err != nil {
 					return err
 				}
-				if len(localNodes) >= ammount {
-					nodes = append(nodes, localNodes[0:ammount]...)
-					ammount = 0
+				logger.Log(fmt.Sprintf("Nodes on page %d: %d", pageNumber, len(localNodes)))
+				nodesLeft := ammount - len(nodes)
+
+				if len(localNodes) >= nodesLeft {
+					nodes = append(nodes, localNodes[0:nodesLeft]...)
 					return nil
 				}
 				nodes = append(nodes, localNodes...)
-				ammount = ammount - len(localNodes)
 				pageNumber += 1
 				err = chromedp.Navigate(advancePage(config.SITE_URL, pageNumber)).Do(ctx)
 				if err != nil {
@@ -99,6 +105,7 @@ func GetImagesURLS(ctx context.Context, ammount int) ([]string, error) {
 			return nil
 		}),
 		chromedp.ActionFunc(func(ctx context.Context) error {
+			logger.Log("Start action to filter nodes attributes")
 			for _, node := range nodes {
 				src, exists := node.Attribute("data-src")
 				if exists {
@@ -120,6 +127,7 @@ func GetImagesURLS(ctx context.Context, ammount int) ([]string, error) {
 	}
 
 	waitForActions.Wait()
+	logger.Log("Finished getting the urls")
 	return imageUrls, nil
 }
 

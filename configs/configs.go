@@ -37,3 +37,4 @@ var PORT string = getEnv("PORT", "3000")
 var SITE_URL string = getEnv("SITE_URL", "https://icanhas.cheezburger.com")
 var CARD_IMG_SELECTOR = getEnv("CARD_IMG_SELECTOR", ".mu-post.mu-thumbnail > img")
 var TIMEOUT = getIntEnv("TIMEOUT", 600) // seconds
+var DEBUG = getBoolEnv("DEBUG", false)

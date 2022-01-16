@@ -26,11 +26,11 @@ func handleRequest() {
 	mainRouter := mux.NewRouter().StrictSlash(true)
 	mainRouter.HandleFunc("/status", reportStatus)
 
-	tilesSubRoute := mainRouter.PathPrefix("/images").Subrouter()
-	tilesSubRoute.Use(middlewares.SetCorsHeaders)
-	tilesSubRoute.HandleFunc("/download", imagesRoutes.GetImages)
-	tilesSubRoute.HandleFunc("/", genericHandler)
-	tilesSubRoute.HandleFunc("/{.*}", genericHandler)
+	imagesSubRoute := mainRouter.PathPrefix("/images").Subrouter()
+	imagesSubRoute.Use(middlewares.SetCorsHeaders)
+	imagesSubRoute.HandleFunc("/download", imagesRoutes.GetImages)
+	imagesSubRoute.HandleFunc("/", genericHandler)
+	imagesSubRoute.HandleFunc("/{.*}", genericHandler)
 
 	fmt.Println("Running on " + config.PORT)
 	log.Fatal(http.ListenAndServe(":"+config.PORT, mainRouter))
