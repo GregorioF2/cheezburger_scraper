@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"sort"
 	"sync"
 	"time"
 
@@ -14,8 +15,8 @@ import (
 	"github.com/chromedp/chromedp"
 
 	config "propper/configs"
-	types "propper/types"
-	logger "propper/types/logger"
+	logger "propper/lib/logger"
+	sem "propper/lib/semaphore"
 )
 
 func DownloadImages(ctx context.Context, urls []string, path string) error {
@@ -82,28 +83,30 @@ func extractSrcFromNode(node *cdp.Node) string {
 	return ""
 }
 
-func GetImagesURLS(ctx context.Context, ammount int) ([]string, error) {
-	var maxConcurrentThreads int = 5
-	if maxConcurrentThreads > ammount/10 {
-		maxConcurrentThreads = ammount / 10
+func GetImagesURLS(ctx context.Context, ammount, threads int) ([]string, error) {
+	logger.Log("Start getting the urls")
+	var maxConcurrentThreads int = threads
+	if maxConcurrentThreads > ammount/config.MIN_CARDS_PER_PAGE {
+		maxConcurrentThreads = ammount / config.MIN_CARDS_PER_PAGE
 	}
-	maxTotalThreads := ammount / 10
+	maxTotalThreads := ammount / config.MIN_CARDS_PER_PAGE
+	logger.Log(fmt.Sprintf("max concurrent threads: %d", maxConcurrentThreads))
+	logger.Log(fmt.Sprintf("maxTotalThreads: %d", maxTotalThreads))
+	semConcurrentThreads := sem.NewCustomSemaphore(maxConcurrentThreads)
+	defer semConcurrentThreads.Close()
 
-	var nodes []*cdp.Node
+	resMap := map[int][]string{}
 	var imageUrls []string
 
-	logger.Log(fmt.Sprintf("Ammount to meet: %d", ammount))
-	logger.Log("Start getting the urls")
-
-	out := make(chan types.PageNode, maxConcurrentThreads*30)
 	errs := make(chan error, maxConcurrentThreads)
-	semConcurrentThreads := make(chan int, maxConcurrentThreads)
+
 	var wg sync.WaitGroup
 	var tabs []context.Context
 	for i := 0; i < maxConcurrentThreads; i += 1 {
 		newCtx, _ := chromedp.NewContext(ctx)
 		tabs = append(tabs, newCtx)
 	}
+	resolvedUrls := 0
 
 	getNodesOfPage := func(cc context.Context, page int) {
 		if err := chromedp.Run(cc,
@@ -112,60 +115,64 @@ func GetImagesURLS(ctx context.Context, ammount int) ([]string, error) {
 				var localNodes []*cdp.Node
 				url := urlOfPage(config.SITE_URL, page)
 				defer wg.Done()
+				defer semConcurrentThreads.Signal()
+				resMap[page] = []string{}
 
 				err := chromedp.Navigate(url).Do(cc)
 				if err != nil {
 					return err
 				}
-				logger.Log(fmt.Sprintf("Bk1 goroutine: %d", page))
+
 				err = chromedp.Nodes(config.CARD_IMG_SELECTOR, &localNodes, chromedp.BySearch).Do(cc)
 				if err != nil {
 					return err
 				}
-				logger.Log(fmt.Sprintf("Nodes on page %d: %d", page, len(localNodes)))
 
 				for _, node := range localNodes {
-					out <- types.PageNode{
-						Node: node,
-						Page: page,
-						Url:  extractSrcFromNode(node),
-					}
+					resMap[page] = append(resMap[page], extractSrcFromNode(node))
 				}
+				resolvedUrls += len(localNodes)
 				logger.Log(fmt.Sprintf("Go routine for page %d finished", page))
-				<-semConcurrentThreads
 				return nil
 			}),
 		); err != nil {
 			errs <- err
-			<-semConcurrentThreads
 			return
 		}
 	}
 
-	logger.Log("Start sendinding go ruoutines")
+	logger.Log("Start routines")
 	for i := 0; i < maxTotalThreads; i += 1 {
+		if resolvedUrls+semConcurrentThreads.CurrentlyRunning()*config.MIN_CARDS_PER_PAGE > ammount {
+			fmt.Println("Break total threads on thread number: ", i)
+			break
+		}
 		wg.Add(1)
-		go getNodesOfPage(tabs[i], i+1)
-		logger.Log("Before sem")
-		semConcurrentThreads <- i + 1
-		logger.Log("after sem")
+		semConcurrentThreads.Take()
+		go getNodesOfPage(tabs[i%maxConcurrentThreads], i+1)
 	}
-	logger.Log("Before wait")
 	wg.Wait()
-	close(out)
 	close(errs)
-	logger.Log("After wait")
-
-	for val := range out {
-		nodes = append(nodes, val.Node)
-		imageUrls = append(imageUrls, val.Url)
+	if len(errs) > 0 {
+		return nil, <-errs
 	}
-	logger.Log(fmt.Sprintf("Total ammount of nodes: %d ", len(nodes)))
+
+	keys := make([]int, len(resMap))
+	fmt.Println("Len res map: ", len(resMap))
+	i := 0
+	for k := range resMap {
+		keys[i] = k
+		i++
+	}
+	sort.Ints(keys)
+	for _, page := range keys {
+		imageUrls = append(imageUrls, resMap[page]...)
+	}
 	logger.Log("Finished getting the urls")
-	return imageUrls, nil
+	return imageUrls[0:ammount], nil
 }
 
-func GetImages(ammount int) error {
+func GetImages(ammount, threads int) error {
 	// create context
 	maintCtx, _ := chromedp.NewContext(
 		context.Background(),
@@ -179,7 +186,7 @@ func GetImages(ammount int) error {
 	maintCtx, cancel := context.WithTimeout(maintCtx, time.Duration(config.TIMEOUT)*time.Second)
 	defer cancel()
 
-	imageUrls, err := GetImagesURLS(maintCtx, ammount)
+	imageUrls, err := GetImagesURLS(maintCtx, ammount, threads)
 	if err != nil {
 		return err
 	}
