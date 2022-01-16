@@ -59,17 +59,47 @@ func DownloadImages(ctx context.Context, urls []string, path string) error {
 	return err
 }
 
-func GetImagesURLS(ctx context.Context) ([]string, error) {
+func advancePage(url string, page int) string {
+	if page <= 1 {
+		return url
+	}
+	return fmt.Sprintf("%s/page/%d", url, page)
+}
+
+func GetImagesURLS(ctx context.Context, ammount int) ([]string, error) {
 	var nodes []*cdp.Node
 	var imageUrls []string
+	var pageNumber int = 1
 
 	var waitForActions sync.WaitGroup
 	waitForActions.Add(1)
 	if err := chromedp.Run(ctx,
 		chromedp.Navigate(config.SITE_URL),
-		chromedp.Nodes(".mu-post.mu-thumbnail > img", &nodes, chromedp.BySearch),
+
 		chromedp.ActionFunc(func(ctx context.Context) error {
-			for _, node := range nodes[0:10] {
+			for len(nodes) <= ammount {
+				var localNodes []*cdp.Node
+				err := chromedp.Nodes(".mu-post.mu-thumbnail > img", &localNodes, chromedp.BySearch).Do(ctx)
+				if err != nil {
+					return err
+				}
+				if len(localNodes) >= ammount {
+					nodes = append(nodes, localNodes[0:ammount]...)
+					ammount = 0
+					return nil
+				}
+				nodes = append(nodes, localNodes...)
+				ammount = ammount - len(localNodes)
+				pageNumber += 1
+				err = chromedp.Navigate(advancePage(config.SITE_URL, pageNumber)).Do(ctx)
+				if err != nil {
+					return err
+				}
+			}
+			return nil
+		}),
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			for _, node := range nodes {
 				src, exists := node.Attribute("data-src")
 				if exists {
 					imageUrls = append(imageUrls, src)
@@ -93,7 +123,7 @@ func GetImagesURLS(ctx context.Context) ([]string, error) {
 	return imageUrls, nil
 }
 
-func GetImages() error {
+func GetImages(ammount int) error {
 	// create context
 	maintCtx, _ := chromedp.NewContext(
 		context.Background(),
@@ -104,10 +134,10 @@ func GetImages() error {
 		chromedp.WithLogf(log.Printf),
 	)
 	// create a timeout as a safety net to prevent any infinite wait loops
-	maintCtx, cancel := context.WithTimeout(maintCtx, 60*time.Second)
+	maintCtx, cancel := context.WithTimeout(maintCtx, time.Duration(config.TIMEOUT)*time.Second)
 	defer cancel()
 
-	imageUrls, err := GetImagesURLS(maintCtx)
+	imageUrls, err := GetImagesURLS(maintCtx, ammount)
 	if err != nil {
 		return err
 	}
