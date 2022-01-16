@@ -2,7 +2,6 @@ package images
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -15,6 +14,7 @@ import (
 	"github.com/chromedp/chromedp"
 
 	config "propper/configs"
+	types "propper/types"
 	logger "propper/types/logger"
 )
 
@@ -62,71 +62,105 @@ func DownloadImages(ctx context.Context, urls []string, path string) error {
 	return err
 }
 
-func advancePage(url string, page int) string {
+func urlOfPage(url string, page int) string {
 	if page <= 1 {
 		return url
 	}
 	return fmt.Sprintf("%s/page/%d", url, page)
 }
 
+func extractSrcFromNode(node *cdp.Node) string {
+	src, exists := node.Attribute("data-src")
+	if exists {
+		return src
+
+	}
+	src, exists = node.Attribute("src")
+	if exists {
+		return src
+	}
+	return ""
+}
+
 func GetImagesURLS(ctx context.Context, ammount int) ([]string, error) {
+	var maxConcurrentThreads int = 5
+	if maxConcurrentThreads > ammount/10 {
+		maxConcurrentThreads = ammount / 10
+	}
+	maxTotalThreads := ammount / 10
+
 	var nodes []*cdp.Node
 	var imageUrls []string
-	var pageNumber int = 1
 
-	var waitForActions sync.WaitGroup
-	waitForActions.Add(1)
 	logger.Log(fmt.Sprintf("Ammount to meet: %d", ammount))
 	logger.Log("Start getting the urls")
-	if err := chromedp.Run(ctx,
-		chromedp.Navigate(config.SITE_URL),
-		chromedp.ActionFunc(func(ctx context.Context) error {
-			logger.Log("Start action to select nodes")
-			for len(nodes) <= ammount {
-				var localNodes []*cdp.Node
-				err := chromedp.Nodes(config.CARD_IMG_SELECTOR, &localNodes, chromedp.BySearch).Do(ctx)
-				if err != nil {
-					return err
-				}
-				logger.Log(fmt.Sprintf("Nodes on page %d: %d", pageNumber, len(localNodes)))
-				nodesLeft := ammount - len(nodes)
 
-				if len(localNodes) >= nodesLeft {
-					nodes = append(nodes, localNodes[0:nodesLeft]...)
-					return nil
-				}
-				nodes = append(nodes, localNodes...)
-				pageNumber += 1
-				err = chromedp.Navigate(advancePage(config.SITE_URL, pageNumber)).Do(ctx)
-				if err != nil {
-					return err
-				}
-			}
-			return nil
-		}),
-		chromedp.ActionFunc(func(ctx context.Context) error {
-			logger.Log("Start action to filter nodes attributes")
-			for _, node := range nodes {
-				src, exists := node.Attribute("data-src")
-				if exists {
-					imageUrls = append(imageUrls, src)
-					continue
-				}
-				src, exists = node.Attribute("src")
-				if exists {
-					imageUrls = append(imageUrls, src)
-					continue
-				}
-				return errors.New("Image does not have src url")
-			}
-			waitForActions.Done()
-			return nil
-		}),
-	); err != nil {
-		return nil, err
+	out := make(chan types.PageNode, maxConcurrentThreads*30)
+	errs := make(chan error, maxConcurrentThreads)
+	semConcurrentThreads := make(chan int, maxConcurrentThreads)
+	var wg sync.WaitGroup
+	var tabs []context.Context
+	for i := 0; i < maxConcurrentThreads; i += 1 {
+		newCtx, _ := chromedp.NewContext(ctx)
+		tabs = append(tabs, newCtx)
 	}
 
-	waitForActions.Wait()
+	getNodesOfPage := func(cc context.Context, page int) {
+		if err := chromedp.Run(cc,
+			chromedp.ActionFunc(func(cc context.Context) error {
+				logger.Log(fmt.Sprintf("Go routine for page %d started", page))
+				var localNodes []*cdp.Node
+				url := urlOfPage(config.SITE_URL, page)
+				defer wg.Done()
+
+				err := chromedp.Navigate(url).Do(cc)
+				if err != nil {
+					return err
+				}
+				logger.Log(fmt.Sprintf("Bk1 goroutine: %d", page))
+				err = chromedp.Nodes(config.CARD_IMG_SELECTOR, &localNodes, chromedp.BySearch).Do(cc)
+				if err != nil {
+					return err
+				}
+				logger.Log(fmt.Sprintf("Nodes on page %d: %d", page, len(localNodes)))
+
+				for _, node := range localNodes {
+					out <- types.PageNode{
+						Node: node,
+						Page: page,
+						Url:  extractSrcFromNode(node),
+					}
+				}
+				logger.Log(fmt.Sprintf("Go routine for page %d finished", page))
+				<-semConcurrentThreads
+				return nil
+			}),
+		); err != nil {
+			errs <- err
+			<-semConcurrentThreads
+			return
+		}
+	}
+
+	logger.Log("Start sendinding go ruoutines")
+	for i := 0; i < maxTotalThreads; i += 1 {
+		wg.Add(1)
+		go getNodesOfPage(tabs[i], i+1)
+		logger.Log("Before sem")
+		semConcurrentThreads <- i + 1
+		logger.Log("after sem")
+	}
+	logger.Log("Before wait")
+	wg.Wait()
+	close(out)
+	close(errs)
+	logger.Log("After wait")
+
+	for val := range out {
+		nodes = append(nodes, val.Node)
+		imageUrls = append(imageUrls, val.Url)
+	}
+	logger.Log(fmt.Sprintf("Total ammount of nodes: %d ", len(nodes)))
 	logger.Log("Finished getting the urls")
 	return imageUrls, nil
 }
