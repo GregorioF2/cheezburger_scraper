@@ -39,3 +39,4 @@ var CARD_IMG_SELECTOR = getEnv("CARD_IMG_SELECTOR", ".mu-post.mu-thumbnail > img
 var MIN_CARDS_PER_PAGE = getIntEnv("MIN_CARDS_PER_PAGE", 10)
 var TIMEOUT = getIntEnv("TIMEOUT", 600) // seconds
 var DEBUG = getBoolEnv("DEBUG", false)
+var DOWNLOADS_SAVE_DIR = getEnv("DOWNLOADS_SAVE_DIR", "downloads")

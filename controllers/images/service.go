@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math"
 	"os"
 	"sort"
 	"sync"
@@ -29,6 +30,7 @@ func DownloadImages(ctx context.Context, urls []string, path string) error {
 			currReqId = ev.RequestID
 		case *network.EventLoadingFinished:
 			if ev.RequestID == currReqId {
+				fmt.Println("consume 1 to req in progress  wg")
 				requestInProgressWG.Done()
 			}
 		}
@@ -38,8 +40,12 @@ func DownloadImages(ctx context.Context, urls []string, path string) error {
 	logger.Log("Start download the images")
 	err := chromedp.Run(ctx,
 		chromedp.ActionFunc(func(ctx context.Context) error {
+			defer waitForActions.Done()
+			fmt.Println("urls: ", urls)
 			for i, url := range urls {
+				fmt.Println("Add 1 to wg req in progress")
 				requestInProgressWG.Add(1)
+				fmt.Println("url: ", url)
 				err := chromedp.Navigate(url).Do(ctx)
 				if err != nil {
 					return err
@@ -53,7 +59,6 @@ func DownloadImages(ctx context.Context, urls []string, path string) error {
 					return err
 				}
 			}
-			waitForActions.Done()
 			return nil
 		}),
 	)
@@ -86,10 +91,10 @@ func extractSrcFromNode(node *cdp.Node) string {
 func GetImagesURLS(ctx context.Context, ammount, threads int) ([]string, error) {
 	logger.Log("Start getting the urls")
 	var maxConcurrentThreads int = threads
-	if maxConcurrentThreads > ammount/config.MIN_CARDS_PER_PAGE {
-		maxConcurrentThreads = ammount / config.MIN_CARDS_PER_PAGE
+	maxTotalThreads := int(math.Ceil(float64(ammount) / float64(config.MIN_CARDS_PER_PAGE)))
+	if maxConcurrentThreads > maxTotalThreads {
+		maxConcurrentThreads = maxTotalThreads
 	}
-	maxTotalThreads := ammount / config.MIN_CARDS_PER_PAGE
 	logger.Log(fmt.Sprintf("max concurrent threads: %d", maxConcurrentThreads))
 	logger.Log(fmt.Sprintf("maxTotalThreads: %d", maxTotalThreads))
 	semConcurrentThreads := sem.NewCustomSemaphore(maxConcurrentThreads)
@@ -128,6 +133,7 @@ func GetImagesURLS(ctx context.Context, ammount, threads int) ([]string, error) 
 					return err
 				}
 
+				fmt.Println("nodes: ", len(localNodes))
 				for _, node := range localNodes {
 					resMap[page] = append(resMap[page], extractSrcFromNode(node))
 				}
@@ -143,10 +149,6 @@ func GetImagesURLS(ctx context.Context, ammount, threads int) ([]string, error) 
 
 	logger.Log("Start routines")
 	for i := 0; i < maxTotalThreads; i += 1 {
-		if resolvedUrls+semConcurrentThreads.CurrentlyRunning()*config.MIN_CARDS_PER_PAGE > ammount {
-			fmt.Println("Break total threads on thread number: ", i)
-			break
-		}
 		wg.Add(1)
 		semConcurrentThreads.Take()
 		go getNodesOfPage(tabs[i%maxConcurrentThreads], i+1)
@@ -192,7 +194,7 @@ func GetImages(ammount, threads int) error {
 	}
 
 	folderName := time.Now().UTC().Format("2006_01_02 15:04:05")
-	saveDirectoryPath := fmt.Sprintf("downloads/%s", folderName)
+	saveDirectoryPath := fmt.Sprintf("%s/%s", config.DOWNLOADS_SAVE_DIR, folderName)
 	err = os.Mkdir(saveDirectoryPath, 0755)
 	if err != nil {
 		return err
