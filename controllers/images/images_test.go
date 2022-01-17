@@ -21,6 +21,12 @@ func assertInt(t *testing.T, expected int, actual int, msg string) {
 	}
 }
 
+func assertString(t *testing.T, expected string, actual string, msg string) {
+	if expected != actual {
+		t.Error(msg, fmt.Sprintf("expected : %v, got : %v", expected, actual))
+	}
+}
+
 func assertFloat(t *testing.T, expected float64, actual float64, msg string) {
 	if expected != actual {
 		t.Error(msg, fmt.Sprintf("expected : %v, got : %v", expected, actual))
@@ -107,9 +113,30 @@ func afterAll() {
 }
 
 func cleanUpDownloads() {
-	fmt.Println("Clean up")
 	os.RemoveAll("testdata/downloads")
 	os.Mkdir("testdata/downloads", 0755)
+}
+
+func checkIfDownloadsAreOk(t *testing.T, numberOfDownloads int) {
+	dirs, err := os.ReadDir("testdata/downloads")
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	if len(dirs) > 1 {
+		t.Error("Downloads directory dirty with more than one download")
+		return
+	}
+	imagesDir := dirs[0].Name()
+	files, err := os.ReadDir(fmt.Sprintf("testdata/downloads/%s", imagesDir))
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	for i := 0; i < numberOfDownloads; i += 1 {
+		assertString(t, fmt.Sprintf("%d.jpg", i+1), files[i].Name(), "Unexpected download name")
+	}
 }
 
 func TestMain(m *testing.M) {
@@ -121,10 +148,39 @@ func TestMain(m *testing.M) {
 
 func TestRetriveOneImage(t *testing.T) {
 	ts, _ := setupCommonServer()
-	cleanUpDownloads()
+	defer cleanUpDownloads()
 	defer ts.Close()
-	err := controller.GetImages(1, 1)
+	ammount := 1
+	threads := 1
+	err := controller.GetImages(ammount, threads)
 	if err != nil {
 		t.Error("Error getting images: ", err)
 	}
+	checkIfDownloadsAreOk(t, ammount)
+}
+
+func TestRetriveMultipleImages(t *testing.T) {
+	ts, _ := setupCommonServer()
+	defer cleanUpDownloads()
+	defer ts.Close()
+	ammount := 9
+	threads := 1
+	err := controller.GetImages(ammount, threads)
+	if err != nil {
+		t.Error("Error getting images: ", err)
+	}
+	checkIfDownloadsAreOk(t, ammount)
+}
+
+func TestRetriveMultipleImagesWithMultipleThreads(t *testing.T) {
+	ts, _ := setupCommonServer()
+	defer cleanUpDownloads()
+	defer ts.Close()
+	ammount := 9
+	threads := 2
+	err := controller.GetImages(ammount, threads)
+	if err != nil {
+		t.Error("Error getting images: ", err)
+	}
+	checkIfDownloadsAreOk(t, ammount)
 }

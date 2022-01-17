@@ -30,7 +30,6 @@ func DownloadImages(ctx context.Context, urls []string, path string) error {
 			currReqId = ev.RequestID
 		case *network.EventLoadingFinished:
 			if ev.RequestID == currReqId {
-				fmt.Println("consume 1 to req in progress  wg")
 				requestInProgressWG.Done()
 			}
 		}
@@ -41,11 +40,8 @@ func DownloadImages(ctx context.Context, urls []string, path string) error {
 	err := chromedp.Run(ctx,
 		chromedp.ActionFunc(func(ctx context.Context) error {
 			defer waitForActions.Done()
-			fmt.Println("urls: ", urls)
 			for i, url := range urls {
-				fmt.Println("Add 1 to wg req in progress")
 				requestInProgressWG.Add(1)
-				fmt.Println("url: ", url)
 				err := chromedp.Navigate(url).Do(ctx)
 				if err != nil {
 					return err
@@ -133,7 +129,6 @@ func GetImagesURLS(ctx context.Context, ammount, threads int) ([]string, error) 
 					return err
 				}
 
-				fmt.Println("nodes: ", len(localNodes))
 				for _, node := range localNodes {
 					resMap[page] = append(resMap[page], extractSrcFromNode(node))
 				}
@@ -160,7 +155,6 @@ func GetImagesURLS(ctx context.Context, ammount, threads int) ([]string, error) 
 	}
 
 	keys := make([]int, len(resMap))
-	fmt.Println("Len res map: ", len(resMap))
 	i := 0
 	for k := range resMap {
 		keys[i] = k
