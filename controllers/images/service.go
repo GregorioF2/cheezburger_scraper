@@ -168,7 +168,7 @@ func GetImagesURLS(ctx context.Context, ammount, threads int) ([]string, error) 
 	return imageUrls[0:ammount], nil
 }
 
-func GetImages(ammount, threads int) error {
+func GetImages(ammount, threads int) ([]string, error) {
 	// create context
 	maintCtx, _ := chromedp.NewContext(
 		context.Background(),
@@ -184,19 +184,19 @@ func GetImages(ammount, threads int) error {
 
 	imageUrls, err := GetImagesURLS(maintCtx, ammount, threads)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	folderName := time.Now().UTC().Format("2006_01_02 15:04:05")
 	saveDirectoryPath := fmt.Sprintf("%s/%s", config.DOWNLOADS_SAVE_DIR, folderName)
 	err = os.Mkdir(saveDirectoryPath, 0755)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	err = DownloadImages(imagesCtx, imageUrls, saveDirectoryPath)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return nil
+	return imageUrls, nil
 }

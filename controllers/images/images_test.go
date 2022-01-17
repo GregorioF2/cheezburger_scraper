@@ -8,48 +8,18 @@ import (
 	"net/http/httptest"
 	"os"
 	config "propper/configs"
-	"sort"
 	"strings"
 	"testing"
 
 	controller "propper/controllers/images"
+	utils "propper/test/utils"
 )
 
-func assertInt(t *testing.T, expected int, actual int, msg string) {
-	if expected != actual {
-		t.Error(msg, fmt.Sprintf("expected : %v, got : %v", expected, actual))
-	}
-}
+var testDirectory = "../../test"
+var downloadsDirectory = testDirectory + "/downloads"
 
-func assertString(t *testing.T, expected string, actual string, msg string) {
-	if expected != actual {
-		t.Error(msg, fmt.Sprintf("expected : %v, got : %v", expected, actual))
-	}
-}
-
-func assertFloat(t *testing.T, expected float64, actual float64, msg string) {
-	if expected != actual {
-		t.Error(msg, fmt.Sprintf("expected : %v, got : %v", expected, actual))
-	}
-}
-
-func assertFloats(t *testing.T, expected []float64, actual []float64, msg string) {
-	if len(expected) != len(actual) {
-		t.Error(msg, fmt.Sprintf("expected : %v, got : %v", expected, actual))
-		return
-	}
-	sort.Float64s(expected)
-	sort.Float64s(actual)
-	for i, expectedValue := range expected {
-		if expectedValue != actual[i] {
-			t.Error(msg, fmt.Sprintf("expected : %v, got : %v", expected, actual))
-			return
-		}
-	}
-}
-
-func handleReturnImage(w http.ResponseWriter, r *http.Request) {
-	fileBytes, err := ioutil.ReadFile("testdata/test_image.jpg")
+func returnImageHandler(w http.ResponseWriter, r *http.Request) {
+	fileBytes, err := ioutil.ReadFile(testDirectory + "/data/test_image.jpg")
 	if err != nil {
 		panic(err)
 	}
@@ -72,7 +42,7 @@ func testHtml(imagesNumber int, url string) string {
 	return res
 }
 
-func writeHTML(content string) http.Handler {
+func returnHtmlHandler(content string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		io.WriteString(w, strings.TrimSpace(content))
@@ -91,34 +61,34 @@ func setupCommonServer() (*httptest.Server, *http.ServeMux) {
 		w.Header().Set("Content-Type", "text/html")
 		io.WriteString(w, strings.TrimSpace(testHtml(5, url)))
 	})
-	mux.HandleFunc("/download/image", handleReturnImage)
+	mux.HandleFunc("/download/image", returnImageHandler)
 
 	config.CARD_IMG_SELECTOR = "img"
 	config.MIN_CARDS_PER_PAGE = 5
 	config.SITE_URL = ts.URL
-	config.DOWNLOADS_SAVE_DIR = "./testdata/downloads"
+	config.DOWNLOADS_SAVE_DIR = downloadsDirectory
 
 	return ts, mux
 }
 
 func beforeAll() {
-	_, err := os.Stat("testdata/downloads")
+	_, err := os.Stat(downloadsDirectory)
 	if os.IsNotExist(err) {
-		os.Mkdir("testdata/downloads", 0755)
+		os.Mkdir(downloadsDirectory, 0755)
 	}
 }
 
 func afterAll() {
-	os.RemoveAll("testdata/downloads")
+	os.RemoveAll(downloadsDirectory)
 }
 
 func cleanUpDownloads() {
-	os.RemoveAll("testdata/downloads")
-	os.Mkdir("testdata/downloads", 0755)
+	os.RemoveAll(downloadsDirectory)
+	os.Mkdir(downloadsDirectory, 0755)
 }
 
 func checkIfDownloadsAreOk(t *testing.T, numberOfDownloads int) {
-	dirs, err := os.ReadDir("testdata/downloads")
+	dirs, err := os.ReadDir(downloadsDirectory)
 	if err != nil {
 		t.Error(err)
 		return
@@ -128,14 +98,25 @@ func checkIfDownloadsAreOk(t *testing.T, numberOfDownloads int) {
 		return
 	}
 	imagesDir := dirs[0].Name()
-	files, err := os.ReadDir(fmt.Sprintf("testdata/downloads/%s", imagesDir))
+	files, err := os.ReadDir(fmt.Sprintf("%s/%s", downloadsDirectory, imagesDir))
 	if err != nil {
 		t.Error(err)
 		return
 	}
+	if !utils.Assert(t, len(files), numberOfDownloads, "Invalid number of downloaded images") {
+		return
+	}
+	filesNames := []string{}
+	for _, file := range files {
+		filesNames = append(filesNames, file.Name())
+	}
 
 	for i := 0; i < numberOfDownloads; i += 1 {
-		assertString(t, fmt.Sprintf("%d.jpg", i+1), files[i].Name(), "Unexpected download name")
+		fileName := fmt.Sprintf("%d.jpg", i+1)
+		if !utils.Contains(filesNames, fileName) {
+			t.Error("Missing expected download with name: ", fileName)
+			return
+		}
 	}
 }
 
@@ -152,7 +133,7 @@ func TestRetriveOneImage(t *testing.T) {
 	defer ts.Close()
 	ammount := 1
 	threads := 1
-	err := controller.GetImages(ammount, threads)
+	_, err := controller.GetImages(ammount, threads)
 	if err != nil {
 		t.Error("Error getting images: ", err)
 	}
@@ -163,9 +144,9 @@ func TestRetriveMultipleImages(t *testing.T) {
 	ts, _ := setupCommonServer()
 	defer cleanUpDownloads()
 	defer ts.Close()
-	ammount := 9
+	ammount := 100
 	threads := 1
-	err := controller.GetImages(ammount, threads)
+	_, err := controller.GetImages(ammount, threads)
 	if err != nil {
 		t.Error("Error getting images: ", err)
 	}
@@ -176,9 +157,9 @@ func TestRetriveMultipleImagesWithMultipleThreads(t *testing.T) {
 	ts, _ := setupCommonServer()
 	defer cleanUpDownloads()
 	defer ts.Close()
-	ammount := 9
+	ammount := 100
 	threads := 2
-	err := controller.GetImages(ammount, threads)
+	_, err := controller.GetImages(ammount, threads)
 	if err != nil {
 		t.Error("Error getting images: ", err)
 	}

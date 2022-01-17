@@ -1,6 +1,7 @@
 package images
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 
@@ -38,6 +39,7 @@ func getImagesParameters(parameters map[string][]string) (int, int, error) {
 }
 
 func GetImages(w http.ResponseWriter, r *http.Request) {
+	var err error
 	ammount, threads, err := getImagesParameters(r.URL.Query())
 	if err != nil {
 		var responseError *ResponseError
@@ -50,7 +52,7 @@ func GetImages(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, responseError.Error(), responseError.StatusCode)
 		return
 	}
-	err = imagesController.GetImages(ammount, threads)
+	urls, err := imagesController.GetImages(ammount, threads)
 	if err != nil {
 		var responseError *ResponseError
 		switch e := err.(type) {
@@ -63,5 +65,14 @@ func GetImages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.WriteHeader(http.StatusNoContent)
+	payload, err := json.Marshal(urls)
+	if err != nil {
+		responseError := &ResponseError{Err: "error encoding return payload", StatusCode: http.StatusInternalServerError}
+		http.Error(w, responseError.Error(), responseError.StatusCode)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(payload)
 }
