@@ -1,7 +1,8 @@
 package errors
 
 type ConnectionError struct {
-	Err string
+	Err      string
+	RawError error
 }
 
 func (m *ConnectionError) Error() string {

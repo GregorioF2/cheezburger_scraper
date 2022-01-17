@@ -13,21 +13,12 @@ import (
 
 	controller "propper/controllers/images"
 	utils "propper/test/utils"
+
+	errors "propper/types/errors"
 )
 
 var testDirectory = "../../test"
 var downloadsDirectory = testDirectory + "/downloads"
-
-func returnImageHandler(w http.ResponseWriter, r *http.Request) {
-	fileBytes, err := ioutil.ReadFile(testDirectory + "/data/test_image.jpg")
-	if err != nil {
-		panic(err)
-	}
-	w.WriteHeader(http.StatusOK)
-	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Write(fileBytes)
-	return
-}
 
 func testHtml(imagesNumber int, url string) string {
 	res := `
@@ -42,26 +33,46 @@ func testHtml(imagesNumber int, url string) string {
 	return res
 }
 
-func returnHtmlHandler(content string) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func imageHandler(w http.ResponseWriter, r *http.Request) {
+	fileBytes, err := ioutil.ReadFile(testDirectory + "/data/test_image.jpg")
+	if err != nil {
+		panic(err)
+	}
+	w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Write(fileBytes)
+	return
+}
+
+func returnHtmlHandler(content string) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		io.WriteString(w, strings.TrimSpace(content))
-	})
+	}
+}
+
+func setupServerErrorImgSrc() (*httptest.Server, *http.ServeMux) {
+	mux := http.NewServeMux()
+	ts := httptest.NewServer(mux)
+	mux.HandleFunc("/page/{id}", returnHtmlHandler(testHtml(5, "invalid imag src")))
+	mux.HandleFunc("/", returnHtmlHandler(testHtml(5, "invalid imag src")))
+	mux.HandleFunc("/download/image", imageHandler)
+
+	config.CARD_IMG_SELECTOR = "img"
+	config.MIN_CARDS_PER_PAGE = 5
+	config.SITE_URL = ts.URL
+	config.DOWNLOADS_SAVE_DIR = downloadsDirectory
+
+	return ts, mux
 }
 
 func setupCommonServer() (*httptest.Server, *http.ServeMux) {
 	mux := http.NewServeMux()
 	ts := httptest.NewServer(mux)
 	url := fmt.Sprintf("%s/download/image", ts.URL)
-	mux.HandleFunc("/page/{id}", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html")
-		io.WriteString(w, strings.TrimSpace(testHtml(5, url)))
-	})
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html")
-		io.WriteString(w, strings.TrimSpace(testHtml(5, url)))
-	})
-	mux.HandleFunc("/download/image", returnImageHandler)
+	mux.HandleFunc("/page/{id}", returnHtmlHandler(testHtml(5, url)))
+	mux.HandleFunc("/", returnHtmlHandler(testHtml(5, url)))
+	mux.HandleFunc("/download/image", imageHandler)
 
 	config.CARD_IMG_SELECTOR = "img"
 	config.MIN_CARDS_PER_PAGE = 5
@@ -144,7 +155,7 @@ func TestRetriveMultipleImages(t *testing.T) {
 	ts, _ := setupCommonServer()
 	defer cleanUpDownloads()
 	defer ts.Close()
-	ammount := 100
+	ammount := 20
 	threads := 1
 	_, err := controller.GetImages(ammount, threads)
 	if err != nil {
@@ -157,11 +168,67 @@ func TestRetriveMultipleImagesWithMultipleThreads(t *testing.T) {
 	ts, _ := setupCommonServer()
 	defer cleanUpDownloads()
 	defer ts.Close()
-	ammount := 100
+	ammount := 20
 	threads := 2
 	_, err := controller.GetImages(ammount, threads)
 	if err != nil {
 		t.Error("Error getting images: ", err)
 	}
 	checkIfDownloadsAreOk(t, ammount)
+}
+
+func TestErrorOnInvalidSiteURL(t *testing.T) {
+	ts, _ := setupCommonServer()
+	config.SITE_URL = "invalid site url"
+	defer cleanUpDownloads()
+	defer ts.Close()
+	ammount := 1
+	threads := 1
+	_, err := controller.GetImages(ammount, threads)
+	if err == nil {
+		t.Error("Expected error, got nil")
+	}
+	switch e := err.(type) {
+	case *errors.ConnectionError:
+		return
+	default:
+		t.Error("Expected error has invalid type. ConnectionError was expected. Error recived: ", e.Error())
+	}
+}
+
+func TestErrorOnInvalidSaveDirectory(t *testing.T) {
+	ts, _ := setupCommonServer()
+	config.DOWNLOADS_SAVE_DIR = "invalid save directory selector"
+	defer cleanUpDownloads()
+	defer ts.Close()
+	ammount := 1
+	threads := 1
+	_, err := controller.GetImages(ammount, threads)
+	if err == nil {
+		t.Error("Expected error, got nil")
+	}
+	switch e := err.(type) {
+	case *errors.InternalServerError:
+		return
+	default:
+		t.Error("Expected error has invalid type. ConnectionError was expected. Error recived: ", e.Error())
+	}
+}
+
+func TestErrorOnInvalidImageSrc(t *testing.T) {
+	ts, _ := setupServerErrorImgSrc()
+	defer cleanUpDownloads()
+	defer ts.Close()
+	ammount := 1
+	threads := 1
+	_, err := controller.GetImages(ammount, threads)
+	if err == nil {
+		t.Error("Expected error, got nil")
+	}
+	switch e := err.(type) {
+	case *errors.ConnectionError:
+		return
+	default:
+		t.Error("Expected error has invalid type. ConnectionError was expected. Error recived: ", e.Error())
+	}
 }

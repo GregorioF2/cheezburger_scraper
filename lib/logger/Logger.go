@@ -12,11 +12,11 @@ func init() {
 	}
 }
 
-func Log(i interface{}) {
+func Log(i ...interface{}) {
 	if !config.DEBUG {
 		return
 	}
 	now := time.Now().UTC().Format("15:04:05")
 	fmt.Printf("%s :: ", now)
-	fmt.Println(i)
+	fmt.Println(i...)
 }
