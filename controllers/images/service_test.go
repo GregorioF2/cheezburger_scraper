@@ -71,8 +71,8 @@ func setupServerWithBlankBody() (*httptest.Server, *http.ServeMux) {
 func setupServerErrorImgSrc() (*httptest.Server, *http.ServeMux) {
 	mux := http.NewServeMux()
 	ts := httptest.NewServer(mux)
-	mux.HandleFunc("/page/{id}", returnHtmlHandler(testHtml(5, "invalid imag src")))
-	mux.HandleFunc("/", returnHtmlHandler(testHtml(5, "invalid imag src")))
+	mux.HandleFunc("/page/{id}", returnHtmlHandler(testHtml(5, "invalid image src")))
+	mux.HandleFunc("/", returnHtmlHandler(testHtml(5, "invalid image src")))
 	mux.HandleFunc("/download/image", imageHandler)
 
 	config.CARD_IMG_SELECTOR = "img"
@@ -211,7 +211,7 @@ func TestErrorOnInvalidSiteURL(t *testing.T) {
 	case *errors.ConnectionError:
 		return
 	default:
-		t.Error("Expected error has invalid type. ConnectionError was expected. Error recived: ", e.Error())
+		t.Error("Expected error has invalid type. ConnectionError was expected. Error received: ", e.Error())
 	}
 }
 
@@ -230,7 +230,7 @@ func TestErrorOnInvalidSaveDirectory(t *testing.T) {
 	case *errors.InternalServerError:
 		return
 	default:
-		t.Error("Expected error has invalid type. InternalServerError was expected. Error recived: ", e.Error())
+		t.Error("Expected error has invalid type. InternalServerError was expected. Error received: ", e.Error())
 	}
 }
 
@@ -248,7 +248,7 @@ func TestErrorOnInvalidImageSrc(t *testing.T) {
 	case *errors.ConnectionError:
 		return
 	default:
-		t.Error("Expected error has invalid type. ConnectionError was expected. Error recived: ", e.Error())
+		t.Error("Expected error has invalid type. ConnectionError was expected. Error received: ", e.Error())
 	}
 }
 
@@ -266,6 +266,6 @@ func TestErrorOnBodyWithNoImages(t *testing.T) {
 	case *errors.NotFoundError:
 		return
 	default:
-		t.Error("Expected error has invalid type. NotFoundError was expected. Error recived: ", e.Error())
+		t.Error("Expected error has invalid type. NotFoundError was expected. Error received: ", e.Error())
 	}
 }

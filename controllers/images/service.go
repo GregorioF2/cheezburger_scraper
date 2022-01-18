@@ -66,15 +66,15 @@ func DownloadImages(ctx context.Context, urls []string, path string) error {
 				requestInProgressWG.Add(1)
 				err := chromedp.Navigate(url).Do(ctx)
 				if err != nil {
-					return &ConnectionError{Err: fmt.Sprintf("Error downloading img from url: %s", url), RawError: err}
+					return &ConnectionError{Err: fmt.Sprintf("Error downloading image from url: %s", url), RawError: err}
 				}
 				requestInProgressWG.Wait()
 				buf, err := network.GetResponseBody(currReqId).Do(ctx)
 				if err != nil {
-					return &InternalServerError{Err: "Unexpected error downloading img.", RawError: err}
+					return &InternalServerError{Err: "Unexpected error downloading image.", RawError: err}
 				}
 				if err := ioutil.WriteFile(fmt.Sprintf("%s/%d.jpg", path, i+1), buf, 0644); err != nil {
-					return &InternalServerError{Err: "Unexpected writing img locally.", RawError: err}
+					return &InternalServerError{Err: "Unexpected error writing image locally.", RawError: err}
 				}
 			}
 			return nil
@@ -86,18 +86,18 @@ func DownloadImages(ctx context.Context, urls []string, path string) error {
 	return err
 }
 
-func GetImagesURLS(ctx context.Context, ammount, threads int) ([]string, error) {
+func GetImagesURLS(ctx context.Context, amount, threads int) ([]string, error) {
 	logger.Log("Start getting the urls")
 
-	if ammount < 1 {
-		return nil, &InvalidParametersError{Err: "ammount must be greater or equal than 1."}
+	if amount < 1 {
+		return nil, &InvalidParametersError{Err: "amount must be greater or equal than 1."}
 	}
 	if threads < 1 || threads > 5 {
 		return nil, &InvalidParametersError{Err: "threads must be greater or equal than 1, and lesser or equal than 5."}
 	}
 
 	var maxConcurrentThreads int = threads
-	maxTotalQueries := int(math.Ceil(float64(ammount) / float64(config.MIN_CARDS_PER_PAGE)))
+	maxTotalQueries := int(math.Ceil(float64(amount) / float64(config.MIN_CARDS_PER_PAGE)))
 	if maxConcurrentThreads > maxTotalQueries {
 		maxConcurrentThreads = maxTotalQueries
 	}
@@ -106,7 +106,7 @@ func GetImagesURLS(ctx context.Context, ammount, threads int) ([]string, error) 
 	semConcurrentThreads := sem.NewCustomSemaphore(maxConcurrentThreads)
 	defer semConcurrentThreads.Close()
 
-	resMap := map[int][]string{}
+	resMap := sync.Map{}
 	var imageUrls []string
 
 	errs := make(chan error, maxConcurrentThreads)
@@ -127,7 +127,7 @@ func GetImagesURLS(ctx context.Context, ammount, threads int) ([]string, error) 
 				logger.Log(fmt.Sprintf("Go routine for page %d started", page))
 				var localNodes []*cdp.Node
 				url := urlOfPage(config.SITE_URL, page)
-				resMap[page] = []string{}
+				localUrls := []string{}
 
 				err := chromedp.Navigate(url).Do(cc)
 				if err != nil {
@@ -151,8 +151,9 @@ func GetImagesURLS(ctx context.Context, ammount, threads int) ([]string, error) 
 				}
 
 				for _, node := range localNodes {
-					resMap[page] = append(resMap[page], extractSrcFromNode(node))
+					localUrls = append(localUrls, extractSrcFromNode(node))
 				}
+				resMap.Store(page, localUrls)
 				resolvedUrls += len(localNodes)
 				logger.Log(fmt.Sprintf("Go routine for page %d finished", page))
 				return nil
@@ -165,8 +166,8 @@ func GetImagesURLS(ctx context.Context, ammount, threads int) ([]string, error) 
 
 	logger.Log("Start routines")
 	for i := 0; i < maxTotalQueries; i += 1 {
-		if resolvedUrls+semConcurrentThreads.CurrentlyRunning()*config.MIN_CARDS_PER_PAGE > ammount {
-			logger.Log("Preemtibe break on starting new routines")
+		if resolvedUrls+semConcurrentThreads.CurrentlyRunning()*config.MIN_CARDS_PER_PAGE > amount {
+			logger.Log("Preemptive break on starting new routines")
 			break
 		}
 		wg.Add(1)
@@ -179,24 +180,27 @@ func GetImagesURLS(ctx context.Context, ammount, threads int) ([]string, error) 
 		return nil, <-errs
 	}
 
-	keys := make([]int, len(resMap))
-	i := 0
-	for k := range resMap {
-		keys[i] = k
-		i++
-	}
+	keys := []int{}
+	resMap.Range(func(key interface{}, value interface{}) bool {
+		keys = append(keys, key.(int))
+		return true
+	})
 	sort.Ints(keys)
 	for _, page := range keys {
-		imageUrls = append(imageUrls, resMap[page]...)
+		urls, ok := resMap.Load(page)
+		if !ok {
+			return nil, &InternalServerError{Err: "No results retrieved for one of the pages"}
+		}
+		imageUrls = append(imageUrls, urls.([]string)...)
 	}
-	if ammount > len(imageUrls) {
-		return nil, &BadRequestError{Err: "Not enough images to meet the ammount"}
+	if amount > len(imageUrls) {
+		return nil, &BadRequestError{Err: "Not enough images to meet the amount"}
 	}
 	logger.Log("Finished getting the urls")
-	return imageUrls[0:ammount], nil
+	return imageUrls[0:amount], nil
 }
 
-func GetImages(ammount, threads int) ([]string, error) {
+func GetImages(amount, threads int) ([]string, error) {
 	// create context
 	maintCtx, _ := chromedp.NewContext(
 		context.Background(),
@@ -210,7 +214,7 @@ func GetImages(ammount, threads int) ([]string, error) {
 	maintCtx, cancel := context.WithTimeout(maintCtx, time.Duration(config.TIMEOUT)*time.Second)
 	defer cancel()
 
-	imageUrls, err := GetImagesURLS(maintCtx, ammount, threads)
+	imageUrls, err := GetImagesURLS(maintCtx, amount, threads)
 	if err != nil {
 		return nil, err
 	}
