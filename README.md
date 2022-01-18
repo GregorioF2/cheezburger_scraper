@@ -6,7 +6,7 @@ The CheezBurger scraper is a Golang based application that provides an API inter
 
 ```bash
  sudo docker build . -t cheezburger_scrapper
- sudo docker run --network host -it cheezburger_scrapper
+ sudo docker run --network host -e DEBUG=true -it cheezburger_scrapper
 ```
 
 ## Project structure
@@ -31,6 +31,7 @@ cheezburger_scraper/
 - `(optional) TIMEOUT`            = Timeout supported for each request
 - `(optional) DEBUG`              = Debug option. If is set to `true` will display informative logs about the processing
 - `(optional) DOWNLOADS_SAVE_DIR` = Directory where to save the downloaded images
+- `(optional) SLEEP_TIME`         = Sleep time to await for resources
 
 
 ## Endpoints

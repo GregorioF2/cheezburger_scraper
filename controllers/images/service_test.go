@@ -23,7 +23,7 @@ var downloadsDirectory = testDirectory + "/downloads"
 func testHtml(imagesNumber int, url string) string {
 	res := `
 	<body>
-	<p id="content" onclick="changeText()">Original content.</p>`
+	<p id="content"">Original content.</p>`
 	for i := 0; i < imagesNumber; i += 1 {
 		res += fmt.Sprintf(`
 		<img src="%s">`, url)
@@ -51,6 +51,23 @@ func returnHtmlHandler(content string) func(w http.ResponseWriter, r *http.Reque
 	}
 }
 
+func setupServerWithBlankBody() (*httptest.Server, *http.ServeMux) {
+	mux := http.NewServeMux()
+	ts := httptest.NewServer(mux)
+	url := fmt.Sprintf("%s/download/image", ts.URL)
+	mux.HandleFunc("/page/{id}", returnHtmlHandler(testHtml(0, url)))
+	mux.HandleFunc("/", returnHtmlHandler(testHtml(0, url)))
+	mux.HandleFunc("/download/image", imageHandler)
+
+	config.CARD_IMG_SELECTOR = "img"
+	config.MIN_CARDS_PER_PAGE = 5
+	config.SITE_URL = ts.URL
+	config.DOWNLOADS_SAVE_DIR = downloadsDirectory
+	config.SLEEP_TIME = 0
+
+	return ts, mux
+}
+
 func setupServerErrorImgSrc() (*httptest.Server, *http.ServeMux) {
 	mux := http.NewServeMux()
 	ts := httptest.NewServer(mux)
@@ -62,6 +79,7 @@ func setupServerErrorImgSrc() (*httptest.Server, *http.ServeMux) {
 	config.MIN_CARDS_PER_PAGE = 5
 	config.SITE_URL = ts.URL
 	config.DOWNLOADS_SAVE_DIR = downloadsDirectory
+	config.SLEEP_TIME = 0
 
 	return ts, mux
 }
@@ -78,6 +96,7 @@ func setupCommonServer() (*httptest.Server, *http.ServeMux) {
 	config.MIN_CARDS_PER_PAGE = 5
 	config.SITE_URL = ts.URL
 	config.DOWNLOADS_SAVE_DIR = downloadsDirectory
+	config.SLEEP_TIME = 0
 
 	return ts, mux
 }
@@ -211,7 +230,7 @@ func TestErrorOnInvalidSaveDirectory(t *testing.T) {
 	case *errors.InternalServerError:
 		return
 	default:
-		t.Error("Expected error has invalid type. ConnectionError was expected. Error recived: ", e.Error())
+		t.Error("Expected error has invalid type. InternalServerError was expected. Error recived: ", e.Error())
 	}
 }
 
@@ -230,5 +249,23 @@ func TestErrorOnInvalidImageSrc(t *testing.T) {
 		return
 	default:
 		t.Error("Expected error has invalid type. ConnectionError was expected. Error recived: ", e.Error())
+	}
+}
+
+func TestErrorOnBodyWithNoImages(t *testing.T) {
+	ts, _ := setupServerWithBlankBody()
+	defer cleanUpDownloads()
+	defer ts.Close()
+	ammount := 1
+	threads := 1
+	_, err := controller.GetImages(ammount, threads)
+	if err == nil {
+		t.Error("Expected error, got nil")
+	}
+	switch e := err.(type) {
+	case *errors.NotFoundError:
+		return
+	default:
+		t.Error("Expected error has invalid type. NotFoundError was expected. Error recived: ", e.Error())
 	}
 }

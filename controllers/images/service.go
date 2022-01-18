@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/chromedp/cdproto/cdp"
+	"github.com/chromedp/cdproto/dom"
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
 
@@ -87,6 +88,14 @@ func DownloadImages(ctx context.Context, urls []string, path string) error {
 
 func GetImagesURLS(ctx context.Context, ammount, threads int) ([]string, error) {
 	logger.Log("Start getting the urls")
+
+	if ammount < 1 {
+		return nil, &InvalidParametersError{Err: "ammount must be greater or equal than 1."}
+	}
+	if threads < 1 {
+		return nil, &InvalidParametersError{Err: "threads must be greater or equal than 1."}
+	}
+
 	var maxConcurrentThreads int = threads
 	maxTotalQueries := int(math.Ceil(float64(ammount) / float64(config.MIN_CARDS_PER_PAGE)))
 	if maxConcurrentThreads > maxTotalQueries {
@@ -124,6 +133,18 @@ func GetImagesURLS(ctx context.Context, ammount, threads int) ([]string, error) 
 				if err != nil {
 					return &ConnectionError{Err: fmt.Sprintf("Error connecting to URL (%s)", url), RawError: err}
 				}
+				// wait to load resources
+				err = chromedp.Sleep(time.Second * time.Duration(config.SLEEP_TIME)).Do(cc)
+				if err != nil {
+					return &InternalServerError{Err: err.Error(), RawError: err}
+				}
+				_, resultCount, err := dom.PerformSearch(config.CARD_IMG_SELECTOR).Do(cc)
+				if err != nil {
+					return &InternalServerError{Err: err.Error(), RawError: err}
+				}
+				if resultCount == 0 {
+					return &NotFoundError{Err: fmt.Sprintf("Couldn't find any images on url(%s)", url)}
+				}
 				err = chromedp.Nodes(config.CARD_IMG_SELECTOR, &localNodes, chromedp.BySearch).Do(cc)
 				if err != nil {
 					return &InternalServerError{Err: "Unexpected error selecting nodes", RawError: err}
@@ -144,6 +165,10 @@ func GetImagesURLS(ctx context.Context, ammount, threads int) ([]string, error) 
 
 	logger.Log("Start routines")
 	for i := 0; i < maxTotalQueries; i += 1 {
+		if resolvedUrls+semConcurrentThreads.CurrentlyRunning()*config.MIN_CARDS_PER_PAGE > ammount {
+			logger.Log("Preemtibe break on starting new routines")
+			break
+		}
 		wg.Add(1)
 		semConcurrentThreads.Take()
 		go getNodesOfPage(tabs[i%maxConcurrentThreads], i+1)

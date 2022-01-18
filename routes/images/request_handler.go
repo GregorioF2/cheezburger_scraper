@@ -20,9 +20,6 @@ func getImagesParameters(parameters map[string][]string) (int, int, error) {
 			return 0, 0, &InvalidParametersError{Err: "Error reading ammount parameter: " + err.Error()}
 		}
 	}
-	if ammount == 0 {
-		return 0, 0, &InvalidParametersError{Err: "Error ammount parameter must be greater than 0: " + err.Error()}
-	}
 
 	var threads uint64 = 1
 	paramThreads, ok := parameters["threads"]
@@ -31,9 +28,6 @@ func getImagesParameters(parameters map[string][]string) (int, int, error) {
 		if err != nil {
 			return 0, 0, &InvalidParametersError{Err: "Error reading threads parameter: " + err.Error()}
 		}
-	}
-	if threads == 0 {
-		return 0, 0, &InvalidParametersError{Err: "Error threads parameter must be greater than 0: " + err.Error()}
 	}
 	return int(ammount), int(threads), nil
 }
@@ -58,6 +52,8 @@ func GetImages(w http.ResponseWriter, r *http.Request) {
 		switch e := err.(type) {
 		case *InvalidParametersError:
 			responseError = &ResponseError{Err: e.Error(), StatusCode: http.StatusBadRequest}
+		case *NotFoundError:
+			responseError = &ResponseError{Err: e.Error(), StatusCode: http.StatusNotFound}
 		default:
 			responseError = &ResponseError{Err: e.Error(), StatusCode: http.StatusInternalServerError}
 		}
