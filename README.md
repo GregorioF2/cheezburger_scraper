@@ -26,12 +26,12 @@ cheezburger_scraper/
 
 - `(optional) PORT`               = Port where server runs
 - `(optional) SITE_URL`           = Site url to scrap from
-- `(optional) CARD_IMG_SELECTOR`  = Selector to get img components
-- `(optional) MIN_CARDS_PER_PAGE` = Minimum cards per page in site. Used to parallelize processing
+- `(optional) CARD_IMG_SELECTOR`  = Selector to get `img` components
+- `(optional) MIN_CARDS_PER_PAGE` = Minimum cards per page in the site. Used to parallelize processing
 - `(optional) TIMEOUT`            = Timeout supported for each request
 - `(optional) DEBUG`              = Debug option. If is set to `true` will display informative logs about the processing
 - `(optional) DOWNLOADS_SAVE_DIR` = Directory where to save the downloaded images
-- `(optional) SLEEP_TIME`         = Sleep time to await for resources
+- `(optional) SLEEP_TIME`         = Sleep time to wait for resources
 
 
 ## Endpoints
@@ -42,7 +42,7 @@ cheezburger_scraper/
     `GET`
 * Query params:
     
-    * `ammount`: number of images to download
+    * `amount`: number of images to download
 
 
     * `threads`: number of concurrent processes used to scrap the data
