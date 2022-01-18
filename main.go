@@ -29,8 +29,6 @@ func handleRequest() {
 	imagesSubRoute := mainRouter.PathPrefix("/images").Subrouter()
 	imagesSubRoute.Use(middlewares.SetCorsHeaders)
 	imagesSubRoute.HandleFunc("/download", imagesRoutes.GetImages)
-	imagesSubRoute.HandleFunc("/", genericHandler)
-	imagesSubRoute.HandleFunc("/{.*}", genericHandler)
 
 	fmt.Println("Running on " + config.PORT)
 	log.Fatal(http.ListenAndServe(":"+config.PORT, mainRouter))
