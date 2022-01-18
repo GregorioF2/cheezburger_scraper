@@ -11,9 +11,10 @@ import (
 
 func getImagesParameters(parameters map[string][]string) (int, int, error) {
 	var err error
+
+	// default value if param isn't sent
 	var amount uint64 = 10
 	paramAmount, ok := parameters["amount"]
-
 	if ok {
 		amount, err = strconv.ParseUint(paramAmount[0], 10, 32)
 		if err != nil {
@@ -21,6 +22,7 @@ func getImagesParameters(parameters map[string][]string) (int, int, error) {
 		}
 	}
 
+	// default value if param isn't sent
 	var threads uint64 = 1
 	paramThreads, ok := parameters["threads"]
 	if ok {

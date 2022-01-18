@@ -43,7 +43,7 @@ func extractSrcFromNode(node *cdp.Node) string {
 	return ""
 }
 
-func DownloadImages(ctx context.Context, urls []string, path string) error {
+func downloadImages(ctx context.Context, urls []string, path string) error {
 	var requestInProgressWG sync.WaitGroup
 	var currReqId network.RequestID
 
@@ -86,7 +86,7 @@ func DownloadImages(ctx context.Context, urls []string, path string) error {
 	return err
 }
 
-func GetImagesURLS(ctx context.Context, amount, threads int) ([]string, error) {
+func getImagesURLS(ctx context.Context, amount, threads int) ([]string, error) {
 	logger.Log("Start getting the urls")
 
 	if amount < 1 {
@@ -200,6 +200,9 @@ func GetImagesURLS(ctx context.Context, amount, threads int) ([]string, error) {
 	return imageUrls[0:amount], nil
 }
 
+// Given a number of images and number of threads to use. It takes care of coordinating
+// the search and download of the images of the specified site in configs.
+// It returns the urls of the downloaded images.
 func GetImages(amount, threads int) ([]string, error) {
 	// create context
 	maintCtx, _ := chromedp.NewContext(
@@ -214,7 +217,7 @@ func GetImages(amount, threads int) ([]string, error) {
 	maintCtx, cancel := context.WithTimeout(maintCtx, time.Duration(config.TIMEOUT)*time.Second)
 	defer cancel()
 
-	imageUrls, err := GetImagesURLS(maintCtx, amount, threads)
+	imageUrls, err := getImagesURLS(maintCtx, amount, threads)
 	if err != nil {
 		return nil, err
 	}
@@ -226,7 +229,7 @@ func GetImages(amount, threads int) ([]string, error) {
 		return nil, &InternalServerError{Err: err.Error(), RawError: err}
 	}
 
-	err = DownloadImages(imagesCtx, imageUrls, saveDirectoryPath)
+	err = downloadImages(imagesCtx, imageUrls, saveDirectoryPath)
 	if err != nil {
 		return nil, err
 	}
