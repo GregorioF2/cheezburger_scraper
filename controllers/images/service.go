@@ -92,8 +92,8 @@ func GetImagesURLS(ctx context.Context, ammount, threads int) ([]string, error) 
 	if ammount < 1 {
 		return nil, &InvalidParametersError{Err: "ammount must be greater or equal than 1."}
 	}
-	if threads < 1 {
-		return nil, &InvalidParametersError{Err: "threads must be greater or equal than 1."}
+	if threads < 1 || threads > 5 {
+		return nil, &InvalidParametersError{Err: "threads must be greater or equal than 1, and lesser or equal than 5."}
 	}
 
 	var maxConcurrentThreads int = threads
@@ -188,6 +188,9 @@ func GetImagesURLS(ctx context.Context, ammount, threads int) ([]string, error) 
 	sort.Ints(keys)
 	for _, page := range keys {
 		imageUrls = append(imageUrls, resMap[page]...)
+	}
+	if ammount > len(imageUrls) {
+		return nil, &BadRequestError{Err: "Not enough images to meet the ammount"}
 	}
 	logger.Log("Finished getting the urls")
 	return imageUrls[0:ammount], nil
